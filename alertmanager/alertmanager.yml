@@ -1,0 +1,200 @@
+global:
+  resolve_timeout: 5m
+  slack_api_url: '${SLACK_WEBHOOK_URL}'
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+# Template files
+templates:
+  - '/etc/alertmanager/templates/notification.tmpl'
+
+# Routing configuration - hierarchical alert routing
+route:
+  # Catchall - default receiver for any alerts not matching specific routes
+  receiver: 'default'
+  group_by: ['alertname', 'cluster', 'service', 'market']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+
+  # P1 - Critical alerts: immediate PagerDuty notification
+  routes:
+    - match:
+        severity: 'P1'
+      receiver: 'pagerduty-critical'
+      group_wait: 0s
+      group_interval: 30s
+      repeat_interval: 5m
+      continue: true
+
+    # P1 also goes to ops channel
+    - match:
+        severity: 'P1'
+      receiver: 'slack-ops-critical'
+      group_wait: 0s
+      group_interval: 30s
+      repeat_interval: 5m
+
+    # P2 - High priority: Slack notifications
+    - match:
+        severity: 'P2'
+      receiver: 'slack-ops'
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 1h
+
+    # P3 - Medium priority: email digest
+    - match:
+        severity: 'P3'
+      receiver: 'email-digest'
+      group_wait: 5m
+      group_interval: 30m
+      repeat_interval: 8h
+
+    # P4 - Low priority: email digest with longer intervals
+    - match:
+        severity: 'P4'
+      receiver: 'email-digest-low'
+      group_wait: 15m
+      group_interval: 60m
+      repeat_interval: 24h
+
+    # Security alerts special routing
+    - match:
+        alertname: 'SecurityAnomaly|FailedAuthAttempts|FirewallBlock'
+      receiver: 'slack-security'
+      group_wait: 5s
+      group_interval: 1m
+      repeat_interval: 30m
+
+    # VPN tunnel alerts
+    - match:
+        alertname: 'VPNTunnelDown|VPNTunnelDegraded'
+      receiver: 'slack-ops'
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 10m
+
+# Receivers: where alerts are sent
+receivers:
+  # Default receiver - no notification (silent)
+  - name: 'default'
+
+  # PagerDuty - for P1 critical incidents
+  - name: 'pagerduty-critical'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SERVICE_KEY}'
+        description: '{{ .GroupLabels.alertname }} - {{ .GroupLabels.market }}'
+        details:
+          firing: '{{ range .Alerts.Firing }}{{ .Labels.instance }} {{ end }}'
+          severity: '{{ .GroupLabels.severity }}'
+          market: '{{ .GroupLabels.market }}'
+        client: 'Prometheus Alert Manager'
+        client_url: '{{ .ExternalURL }}'
+
+  # Slack - Operations channel (P1 & P2)
+  - name: 'slack-ops'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_OPS}'
+        channel: '#ops-alerts'
+        title: 'Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        actions:
+          - type: button
+            text: 'View Grafana'
+            url: '{{ .ExternalURL }}'
+          - type: button
+            text: 'Runbook'
+            url: 'https://github.com/example-com/observability-as-code/blob/main/docs/alert_runbook.md'
+        footer: 'Prometheus Alert Manager'
+        footer_logo: 'https://www.prometheus.io/assets/favicons/favicon.ico'
+
+  # Slack - Security channel
+  - name: 'slack-security'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_SECURITY}'
+        channel: '#security-events'
+        title: 'Security Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}\nMarket: {{ .Labels.market }}\nSeverity: {{ .Labels.severity }}{{ end }}'
+        send_resolved: true
+        color: 'danger'
+        actions:
+          - type: button
+            text: 'Security Dashboard'
+            url: '{{ .ExternalURL }}/d/security_events'
+        footer: 'Security Event Monitor'
+
+  # Slack - Ops Critical
+  - name: 'slack-ops-critical'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL_CRITICAL}'
+        channel: '#ops-critical'
+        title: '🚨 CRITICAL: {{ .GroupLabels.alertname }}'
+        text: '@here {{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+        color: 'danger'
+        actions:
+          - type: button
+            text: 'PagerDuty'
+            url: 'https://pagerduty.example.com'
+          - type: button
+            text: 'Incident'
+            url: '{{ .ExternalURL }}'
+
+  # Email - P3 digest
+  - name: 'email-digest'
+    email_configs:
+      - to: '${EMAIL_OPS_TEAM}'
+        from: '${EMAIL_FROM_ADDRESS}'
+        smarthost: '${SMTP_HOST}:${SMTP_PORT}'
+        auth_username: '${SMTP_USERNAME}'
+        auth_password: '${SMTP_PASSWORD}'
+        headers:
+          Subject: 'Alerts Digest [P3] - {{ .GroupLabels.market }}'
+        html: |
+          <h2>Alert Summary</h2>
+          <p><strong>Alert:</strong> {{ .GroupLabels.alertname }}</p>
+          <p><strong>Market:</strong> {{ .GroupLabels.market }}</p>
+          <p><strong>Count:</strong> {{ len .Alerts }} alerts</p>
+          <h3>Details:</h3>
+          {{ range .Alerts }}
+          <ul>
+            <li>{{ .Annotations.description }}</li>
+            <li>Instance: {{ .Labels.instance }}</li>
+          </ul>
+          {{ end }}
+          <p><a href="{{ .ExternalURL }}/d/infrastructure_overview">View Dashboard</a></p>
+
+  # Email - P4 digest
+  - name: 'email-digest-low'
+    email_configs:
+      - to: '${EMAIL_OPS_TEAM}'
+        from: '${EMAIL_FROM_ADDRESS}'
+        smarthost: '${SMTP_HOST}:${SMTP_PORT}'
+        auth_username: '${SMTP_USERNAME}'
+        auth_password: '${SMTP_PASSWORD}'
+        headers:
+          Subject: 'Low Priority Alerts Digest [P4]'
+
+# Alert inhibition rules - prevent duplicate/cascading alerts
+inhibit_rules:
+  # Inhibit P3 and below if P1 is already firing
+  - source_match:
+      severity: 'P1'
+    target_match_re:
+      severity: 'P2|P3|P4'
+    equal: ['alertname', 'market', 'instance']
+
+  # Inhibit P4 if P2 or P3 is firing
+  - source_match_re:
+      severity: 'P2|P3'
+    target_match:
+      severity: 'P4'
+    equal: ['alertname', 'market']
+
+  # Don't inhibit resolved alerts
+  - source_match:
+      severity: 'P1'
+      alertstate: 'resolved'
+    equal: ['alertname', 'market', 'instance']

@@ -1,0 +1,277 @@
+name: Validate Observability Configs
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'grafana/**'
+      - 'alertmanager/**'
+      - 'prometheus/**'
+      - '.github/workflows/validate_configs.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'grafana/**'
+      - 'alertmanager/**'
+      - 'prometheus/**'
+
+jobs:
+  validate-yaml:
+    name: Validate YAML Configuration Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Lint YAML files - AlertManager
+        run: |
+          echo "Validating AlertManager YAML..."
+          yamllint -d "{extends: default, rules: {line-length: {max: 120}, document-start: disable}}" alertmanager/*.yml
+
+      - name: Lint YAML files - Prometheus Rules
+        run: |
+          echo "Validating Prometheus Alert Rules YAML..."
+          yamllint -d "{extends: default, rules: {line-length: {max: 120}, document-start: disable}}" prometheus/rules/*.yaml
+
+      - name: Lint YAML files - Grafana
+        run: |
+          echo "Validating Grafana Provisioning YAML..."
+          yamllint -d "{extends: default, rules: {line-length: {max: 120}, document-start: disable}}" grafana/provisioning/*.yaml
+
+  validate-json:
+    name: Validate JSON Configuration Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Validate JSON - Grafana Dashboards
+        run: |
+          echo "Validating Grafana dashboard JSON files..."
+          for file in grafana/dashboards/*.json; do
+            if [[ -f "$file" ]]; then
+              echo "  Checking: $file"
+              python -m json.tool "$file" > /dev/null || exit 1
+            fi
+          done
+          echo "✓ All JSON files are valid"
+
+  validate-prometheus:
+    name: Validate Prometheus Alert Rules Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install prometheus-client
+        run: pip install prometheus-client pyyaml
+
+      - name: Validate Prometheus Rules YAML Structure
+        run: |
+          echo "Validating Prometheus alert rules structure..."
+          python3 << 'EOF'
+          import yaml
+          import sys
+          
+          rules_files = [
+              'prometheus/rules/infrastructure_alerts.yaml',
+              'prometheus/rules/vpn_alerts.yaml',
+              'prometheus/rules/security_alerts.yaml'
+          ]
+          
+          errors = []
+          for rules_file in rules_files:
+              print(f"Validating: {rules_file}")
+              try:
+                  with open(rules_file, 'r') as f:
+                      rules = yaml.safe_load(f)
+                  
+                  if not isinstance(rules, dict) or 'groups' not in rules:
+                      errors.append(f"{rules_file}: Missing 'groups' key")
+                      continue
+                  
+                  for group in rules.get('groups', []):
+                      if 'name' not in group or 'rules' not in group:
+                          errors.append(f"{rules_file}/{group.get('name', 'unknown')}: Missing 'name' or 'rules'")
+                          continue
+                      
+                      for rule in group.get('rules', []):
+                          required_fields = ['alert', 'expr', 'labels', 'annotations']
+                          for field in required_fields:
+                              if field not in rule:
+                                  errors.append(f"{rules_file}/{group['name']}/{rule.get('alert', 'unknown')}: Missing '{field}'")
+                  
+                  print(f"  ✓ {rules_file} is valid")
+              except yaml.YAMLError as e:
+                  errors.append(f"{rules_file}: YAML error - {str(e)}")
+              except FileNotFoundError as e:
+                  errors.append(f"{rules_file}: File not found - {str(e)}")
+          
+          if errors:
+              print("\n❌ Validation errors found:")
+              for error in errors:
+                  print(f"  - {error}")
+              sys.exit(1)
+          else:
+              print("\n✓ All Prometheus alert rules are valid")
+          EOF
+
+  validate-alertmanager:
+    name: Validate AlertManager Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Validate AlertManager Config Structure
+        run: |
+          echo "Validating AlertManager configuration structure..."
+          python3 << 'EOF'
+          import yaml
+          import sys
+          
+          config_file = 'alertmanager/alertmanager.yml'
+          print(f"Validating: {config_file}")
+          
+          try:
+              with open(config_file, 'r') as f:
+                  config = yaml.safe_load(f)
+              
+              # Check required top-level keys
+              required_keys = ['global', 'route', 'receivers']
+              for key in required_keys:
+                  if key not in config:
+                      print(f"❌ Missing required key: {key}")
+                      sys.exit(1)
+              
+              # Validate receivers
+              receivers = config.get('receivers', [])
+              if not isinstance(receivers, list):
+                  print("❌ 'receivers' must be a list")
+                  sys.exit(1)
+              
+              for receiver in receivers:
+                  if 'name' not in receiver:
+                      print("❌ All receivers must have a 'name' field")
+                      sys.exit(1)
+              
+              # Validate route
+              route = config.get('route', {})
+              if 'receiver' not in route:
+                  print("❌ 'route' must have a 'receiver' field")
+                  sys.exit(1)
+              
+              print(f"✓ AlertManager configuration is valid")
+          except yaml.YAMLError as e:
+              print(f"❌ YAML error: {str(e)}")
+              sys.exit(1)
+          except FileNotFoundError as e:
+              print(f"❌ File not found: {str(e)}")
+              sys.exit(1)
+          EOF
+
+  validate-grafana:
+    name: Validate Grafana Provisioning Configuration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Validate Grafana Provisioning
+        run: |
+          echo "Validating Grafana provisioning configuration..."
+          python3 << 'EOF'
+          import yaml
+          import json
+          import sys
+          
+          errors = []
+          
+          # Validate dashboards.yaml
+          try:
+              with open('grafana/provisioning/dashboards.yaml', 'r') as f:
+                  dashboards_config = yaml.safe_load(f)
+              
+              if 'providers' not in dashboards_config:
+                  errors.append("dashboards.yaml: Missing 'providers' key")
+              else:
+                  providers = dashboards_config.get('providers', [])
+                  if not isinstance(providers, list) or len(providers) == 0:
+                      errors.append("dashboards.yaml: 'providers' must be non-empty list")
+              
+              print("✓ dashboards.yaml is valid")
+          except yaml.YAMLError as e:
+              errors.append(f"dashboards.yaml: YAML error - {str(e)}")
+          
+          # Validate datasources.yaml
+          try:
+              with open('grafana/provisioning/datasources.yaml', 'r') as f:
+                  datasources_config = yaml.safe_load(f)
+              
+              if 'datasources' not in datasources_config:
+                  errors.append("datasources.yaml: Missing 'datasources' key")
+              else:
+                  datasources = datasources_config.get('datasources', [])
+                  if not isinstance(datasources, list) or len(datasources) == 0:
+                      errors.append("datasources.yaml: 'datasources' must be non-empty list")
+                  else:
+                      for ds in datasources:
+                          if 'name' not in ds or 'type' not in ds:
+                              errors.append(f"datasources.yaml: Datasource missing 'name' or 'type': {ds}")
+              
+              print("✓ datasources.yaml is valid")
+          except yaml.YAMLError as e:
+              errors.append(f"datasources.yaml: YAML error - {str(e)}")
+          
+          if errors:
+              print("\n❌ Validation errors:")
+              for error in errors:
+                  print(f"  - {error}")
+              sys.exit(1)
+          EOF
+
+  report-status:
+    name: Report Validation Status
+    runs-on: ubuntu-latest
+    needs: [validate-yaml, validate-json, validate-prometheus, validate-alertmanager, validate-grafana]
+    if: always()
+    steps:
+      - name: Check job status
+        run: |
+          if [[ "${{ needs.validate-yaml.result }}" == "failure" ]] || \
+             [[ "${{ needs.validate-json.result }}" == "failure" ]] || \
+             [[ "${{ needs.validate-prometheus.result }}" == "failure" ]] || \
+             [[ "${{ needs.validate-alertmanager.result }}" == "failure" ]] || \
+             [[ "${{ needs.validate-grafana.result }}" == "failure" ]]; then
+            echo "❌ Configuration validation failed"
+            exit 1
+          fi
+          echo "✓ All configuration validations passed successfully"

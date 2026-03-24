@@ -1,0 +1,42 @@
+# Environment variables - NEVER commit these
+.env
+.env.*
+*.env
+
+# Secrets and credentials
+secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.yaml
+credentials.yml
+
+# Sensitive config overrides
+**/private/
+**/internal/
+
+# Real hostnames and IPs - use examples only
+hosts.yaml
+inventory.yaml
+
+# Editor artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Python (if any scripts added later)
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Logs
+*.log
+logs/

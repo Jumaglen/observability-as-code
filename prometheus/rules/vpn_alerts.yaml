@@ -1,0 +1,198 @@
+groups:
+  - name: 'vpn_alerts'
+    interval: '30s'
+    rules:
+      # VPN Tunnel Status Alerts (P1)
+      - alert: VPNTunnelDown
+        expr: |
+          vpn_tunnel_status == 0
+        for: 1m
+        labels:
+          severity: P1
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN tunnel DOWN: {{ $labels.market }} to {{ $labels.endpoint }}'
+          description: 'VPN tunnel from market {{ $labels.market }} to {{ $labels.endpoint }} has been DOWN for more than 1 minute'
+          details: 'CRITICAL: VPN tunnel is not operational. Data synchronization and inter-market communication is broken. Immediate investigation required. Check tunnel logs: `ipsec status` or VPN client logs.'
+          runbook: 'https://github.com/example-com/observability-as-code/blob/main/docs/alert_runbook.md#vpntunneldown'
+
+      # VPN Tunnel Degradation Detection (Pre-failure indicator)
+      - alert: VPNTunnelDegraded
+        expr: |
+          (vpn_tunnel_latency_ms > 200 and vpn_tunnel_status == 1) or (vpn_tunnel_packet_loss_percent > 2 and vpn_tunnel_status == 1)
+        for: 3m
+        labels:
+          severity: P2
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN tunnel DEGRADED: {{ $labels.market }} to {{ $labels.endpoint }}'
+          description: 'VPN tunnel from market {{ $labels.market }} to {{ $labels.endpoint }} is degraded - Latency: {{ $value }}ms, Packet Loss: {{ $labels.packet_loss }}%'
+          details: 'VPN tunnel is operational but showing degradation symptoms. High latency or packet loss detected. Monitor closely as tunnel may fail completely. Check tunnel link status, jitter, and interference.'
+          runbook: 'https://github.com/example-com/observability-as-code/blob/main/docs/alert_runbook.md#vpntunneldegraded'
+
+      # VPN High Latency (SLA violation indicator)
+      - alert: VPNHighLatency
+        expr: |
+          vpn_tunnel_latency_ms{market=~"market-ke|market-tz|market-gh"} > 150
+        for: 5m
+        labels:
+          severity: P2
+          component: vpn
+          sla_impact: 'true'
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN high latency: {{ $labels.market }} - {{ $value | humanize }}ms'
+          description: 'VPN tunnel latency from {{ $labels.market }} to {{ $labels.endpoint }} is {{ $value | humanize }}ms (threshold: 150ms)'
+          details: 'Latency is approaching SLA limits. This impacts transaction processing speed. Investigate ISP quality, tunnel routing, or congestion.'
+
+      - alert: VPNCriticalLatency
+        expr: |
+          vpn_tunnel_latency_ms > 300
+        for: 2m
+        labels:
+          severity: P1
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: VPN latency SLA violation {{ $labels.market }}'
+          description: 'VPN tunnel latency from {{ $labels.market }} to {{ $labels.endpoint }} is {{ $value | humanize }}ms (threshold: 300ms)'
+          details: 'IMMEDIATE ACTION REQUIRED: VPN latency is at critical levels, violating SLA. Transaction processing is severely impacted. Escalate to ISP/network team.'
+
+      # VPN Packet Loss Detection
+      - alert: VPNPacketLoss
+        expr: |
+          vpn_tunnel_packet_loss_percent > 1 and vpn_tunnel_status == 1
+        for: 3m
+        labels:
+          severity: P2
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN packet loss detected: {{ $labels.market }} - {{ $value | humanize }}%'
+          description: 'VPN tunnel from {{ $labels.market }} to {{ $labels.endpoint }} is experiencing {{ $value | humanize }}% packet loss (threshold: 1%)'
+          details: 'Packet loss is present on tunnel. This causes TCP retransmissions and latency spikes. Check for congestion, QoS issues, or link instability.'
+
+      - alert: VPNCriticalPacketLoss
+        expr: |
+          vpn_tunnel_packet_loss_percent > 5
+        for: 1m
+        labels:
+          severity: P1
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: VPN packet loss {{ $labels.market }} - {{ $value | humanize }}%'
+          description: 'VPN tunnel from {{ $labels.market }} to {{ $labels.endpoint }} is experiencing {{ $value | humanize }}% packet loss'
+          details: 'CRITICAL PACKET LOSS: Tunnel quality is severely degraded. Data transmission is likely failing. Emergency escalation required.'
+
+      # VPN Bandwidth Saturation
+      - alert: VPNBandwidthSaturation
+        expr: |
+          (rate(vpn_tunnel_bytes_out_total[1m]) * 8 / 1000000) + (rate(vpn_tunnel_bytes_in_total[1m]) * 8 / 1000000) > 80
+        for: 5m
+        labels:
+          severity: P2
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN bandwidth utilization high: {{ $labels.market }} - {{ $value | humanize }}Mbps'
+          description: 'VPN tunnel from {{ $labels.market }} to {{ $labels.endpoint }} bandwidth utilization is {{ $value | humanize }}Mbps (threshold: 80Mbps)'
+          details: 'Bandwidth is being heavily utilized. Risk of congestion and latency spikes. Consider implementing QoS or upgrading link capacity.'
+
+      - alert: VPNBandwidthExceeded
+        expr: |
+          (rate(vpn_tunnel_bytes_out_total[1m]) * 8 / 1000000) + (rate(vpn_tunnel_bytes_in_total[1m]) * 8 / 1000000) > 95
+        for: 2m
+        labels:
+          severity: P1
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: VPN bandwidth limit exceeded {{ $labels.market }}'
+          description: 'VPN tunnel bandwidth utilization is {{ $value | humanize }}Mbps (threshold: 95Mbps)'
+          details: 'BANDWIDTH LIMIT EXCEEDED: Tunnel is at maximum capacity. New connections may fail. Immediate action required.'
+
+      # VPN Tunnel Jitter Alert (packet timing variation)
+      - alert: VPNHighJitter
+        expr: |
+          vpn_tunnel_jitter_ms > 50
+        for: 3m
+        labels:
+          severity: P2
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN high jitter: {{ $labels.market }} - {{ $value | humanize }}ms'
+          description: 'VPN tunnel from {{ $labels.market }} to {{ $labels.endpoint }} has high jitter: {{ $value | humanize }}ms'
+          details: 'High jitter is detected. This causes inconsistent latency and impacts real-time applications. Check for network path instability.'
+
+      # VPN Configuration Issues
+      - alert: VPNConfigurationError
+        expr: |
+          increase(vpn_config_errors_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: P2
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN configuration error on {{ $labels.endpoint }}'
+          description: 'VPN endpoint {{ $labels.endpoint }} in market {{ $labels.market }} has configuration errors'
+          details: 'Configuration mismatch or syntax error detected. Review tunnel configuration and verify PSK/certificates are synchronized.'
+
+      # VPN Connection Flapping (repeatedly going up/down)
+      - alert: VPNTunnelFlapping
+        expr: |
+          rate(changes(vpn_tunnel_status[5m])) > 0.5
+        for: 2m
+        labels:
+          severity: P2
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN tunnel flapping: {{ $labels.market }} to {{ $labels.endpoint }}'
+          description: 'VPN tunnel is flapping (repeatedly connecting/disconnecting) in market {{ $labels.market }}'
+          details: 'Tunnel is unstable. Frequent reconnections indicate network instability or VPN software issues. Check tunnel logs and network diagnostics.'
+
+      # VPN Remote Gateway Unreachable
+      - alert: VPNRemoteGatewayUnreachable
+        expr: |
+          increase(vpn_gateway_unreachable_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: P1
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN remote gateway unreachable: {{ $labels.remote_market }}'
+          description: 'VPN gateway in market {{ $labels.remote_market }} is unreachable from {{ $labels.market }}'
+          details: 'CRITICAL: Cannot reach remote VPN gateway. Check gateway availability, firewall rules, and routing tables at remote site.'
+
+      # VPN Memory Leak Detection
+      - alert: VPNProcessMemoryLeak
+        expr: |
+          rate(vpn_process_memory_bytes[10m]) > 0 and vpn_process_memory_bytes > 1000000000
+        for: 10m
+        labels:
+          severity: P2
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN process memory growing: {{ $labels.vpn_process }} on {{ $labels.instance }}'
+          description: 'VPN process memory is growing: {{ $value | humanize }}B on {{ $labels.instance }} in market {{ $labels.market }}'
+          details: 'Potential memory leak detected. VPN process memory is increasing over time. Consider restarting VPN service if memory exceeds limits.'
+
+      # VPN Uptime Tracking
+      - alert: VPNTunnelUnstable24h
+        expr: |
+          (count_values(\"state\", changes(vpn_tunnel_status[24h])) by (market, endpoint) or on() vector(0)) > 5
+        labels:
+          severity: P3
+          component: vpn
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'VPN tunnel unstable in past 24h: {{ $labels.market }}'
+          description: 'VPN tunnel in market {{ $labels.market }} has changed state more than 5 times in past 24 hours'
+          details: 'Tunnel has been unstable. Monitor for patterns and investigate root cause if instability continues.'

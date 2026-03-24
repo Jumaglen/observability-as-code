@@ -1,0 +1,167 @@
+{{ define "slack.default.title" }}
+[{{ .Status | toUpper }}{{ if eq .Status "firing" }}: {{ .Alerts.Firing | len }}{{ else }}: {{ .Alerts.Resolved | len }}{{ end }}] {{ .CommonLabels.alertname }}
+{{- end }}
+
+{{ define "slack.default.text" }}
+{{ range .Alerts }}
+{{ if eq .Status "firing" }}*Alert Title:* {{ .Labels.alertname }}
+*Severity:* {{ .Labels.severity }} 
+*Market:* {{ .Labels.market }}
+*Service:* {{ .Labels.service }}
+*Instance:* {{ .Labels.instance }}
+*Description:* {{ .Annotations.description }}
+*Details:* {{ .Annotations.details }}
+*Runbook:* <https://github.com/example-com/observability-as-code/blob/main/docs/alert_runbook.md#{{ .Labels.alertname | lower }}|View Runbook>
+*Dashboard:* <{{ .GeneratorURL }}|Prometheus Graph>
+{{ else }}
+✅ *RESOLVED:* {{ .Labels.alertname }}
+*Market:* {{ .Labels.market }}
+*Service:* {{ .Labels.service }}
+{{ end }}
+---
+{{ end }}
+{{ end }}
+
+{{ define "email.default.subject" }}
+[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }} - Market: {{ .GroupLabels.market }}
+{{- end }}
+
+{{ define "email.default.html" }}
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    .alert-container { margin: 20px 0; padding: 15px; border-radius: 5px; }
+    .firing { background-color: #ffe6e6; border-left: 5px solid #d32f2f; }
+    .resolved { background-color: #e6ffe6; border-left: 5px solid #388e3c; }
+    .critical { color: #d32f2f; font-weight: bold; }
+    .warning { color: #f57c00; font-weight: bold; }
+    .info { color: #0097a7; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f5f5f5; }
+    .labels { font-size: 0.9em; color: #666; }
+    .runbook-link { display: inline-block; margin-top: 10px; padding: 10px 15px; background-color: #2196f3; color: white; text-decoration: none; border-radius: 3px; }
+    .dashboard-link { display: inline-block; margin-top: 10px; margin-left: 10px; padding: 10px 15px; background-color: #4caf50; color: white; text-decoration: none; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h2>Prometheus Alert Notification</h2>
+  
+  {{ if .Alerts.Firing }}
+  <div class="alert-container firing">
+    <h3 class="critical">🚨 FIRING ALERTS ({{ .Alerts.Firing | len }})</h3>
+    {{ range .Alerts.Firing }}
+    <div style="margin: 15px 0;">
+      <table>
+        <tr>
+          <th>Alert Name</th>
+          <td class="critical">{{ .Labels.alertname }}</td>
+        </tr>
+        <tr>
+          <th>Severity</th>
+          <td class="critical">{{ .Labels.severity }}</td>
+        </tr>
+        <tr>
+          <th>Market</th>
+          <td>{{ .Labels.market }}</td>
+        </tr>
+        <tr>
+          <th>Service</th>
+          <td>{{ .Labels.service }}</td>
+        </tr>
+        <tr>
+          <th>Instance</th>
+          <td><code>{{ .Labels.instance }}</code></td>
+        </tr>
+        <tr>
+          <th>Description</th>
+          <td>{{ .Annotations.description }}</td>
+        </tr>
+        <tr>
+          <th>Details</th>
+          <td>{{ .Annotations.details }}</td>
+        </tr>
+        <tr>
+          <th>Started At</th>
+          <td>{{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}</td>
+        </tr>
+        <tr>
+          <th>Labels</th>
+          <td class="labels">
+            {{ range .Labels.SortedPairs }}
+              {{ .Name }}: <code>{{ .Value }}</code><br/>
+            {{ end }}
+          </td>
+        </tr>
+      </table>
+      {{ if .GeneratorURL }}<a href="{{ .GeneratorURL }}" class="dashboard-link">📊 View in Prometheus</a>{{ end }}
+      <a href="https://github.com/example-com/observability-as-code/blob/main/docs/alert_runbook.md#{{ .Labels.alertname | lower }}" class="runbook-link">📖 View Runbook</a>
+    </div>
+    {{ end }}
+  </div>
+  {{ end }}
+
+  {{ if .Alerts.Resolved }}
+  <div class="alert-container resolved">
+    <h3 class="info">✅ RESOLVED ALERTS ({{ .Alerts.Resolved | len }})</h3>
+    {{ range .Alerts.Resolved }}
+    <div style="margin: 15px 0;">
+      <table>
+        <tr>
+          <th>Alert Name</th>
+          <td>{{ .Labels.alertname }}</td>
+        </tr>
+        <tr>
+          <th>Market</th>
+          <td>{{ .Labels.market }}</td>
+        </tr>
+        <tr>
+          <th>Instance</th>
+          <td><code>{{ .Labels.instance }}</code></td>
+        </tr>
+        <tr>
+          <th>Resolved At</th>
+          <td>{{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}</td>
+        </tr>
+        <tr>
+          <th>Duration</th>
+          <td>{{ .EndsAt.Sub .StartsAt }}</td>
+        </tr>
+      </table>
+    </div>
+    {{ end }}
+  </div>
+  {{ end }}
+
+  <hr/>
+  <p style="color: #999; font-size: 0.9em;">
+    <strong>Alert Summary:</strong><br/>
+    Status: {{ .Status | toUpper }}<br/>
+    Group Name: {{ .GroupLabels }}<br/>
+    External URL: <a href="{{ .ExternalURL }}">{{ .ExternalURL }}</a><br/>
+    Generated: {{ now.Format "2006-01-02 15:04:05 MST" }}<br/>
+  </p>
+
+  <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 0.85em; color: #999;">
+    <p>This is an automated alert from the Observability as Code platform monitoring multi-market fintech infrastructure.</p>
+    <p>For support, contact: ops@example.com | <a href="https://github.com/example-com/observability-as-code">Observability as Code Repository</a></p>
+  </div>
+</body>
+</html>
+{{ end }}
+
+{{ define "pagerduty.default.description" }}
+{{ .CommonLabels.alertname }} ({{ .Status }})
+{{ end }}
+
+{{ define "pagerduty.default.client" }}
+{{ .CommonLabels.market }} - Prometheus
+{{ end }}
+
+{{ define "pagerduty.default.instances" }}
+{{ range .Alerts }}
+  {{ .Labels.instance }} ({{ .Labels.severity }})
+{{ end }}
+{{ end }}

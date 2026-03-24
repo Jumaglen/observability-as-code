@@ -1,0 +1,78 @@
+apiVersion: 1
+
+# list of datasources to insert/update depending on what's available in the database
+datasources:
+  # Prometheus datasource for all metrics
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: ${PROMETHEUS_URL:http://prometheus:9090}
+    password: ''
+    user: ''
+    database: ''
+    basicAuth: false
+    basicAuthUser: ''
+    basicAuthPassword: ''
+    withCredentials: false
+    isDefault: true
+    jsonData:
+      alertmanagerUid: alertmanager
+      httpMethod: GET
+      tlsAuthWithCACert: false
+    editable: true
+
+  # InfluxDB datasource for time-series data and VPN metrics
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    url: ${INFLUXDB_URL:http://influxdb:8086}
+    password: ''
+    user: ''
+    database: ${INFLUXDB_DATABASE:observability}
+    basicAuth: false
+    basicAuthUser: ''
+    basicAuthPassword: ''
+    withCredentials: false
+    isDefault: false
+    jsonData:
+      httpMode: GET
+      httpHeaderName1: 'X-Custom-Header'
+      httpHeaderValue1: 'fintech-observability'
+    secureJsonData:
+      httpHeaderValue1: '${INFLUXDB_API_KEY}'
+    editable: true
+
+  # Loki datasource for logs integration
+  - name: Loki
+    type: loki
+    access: proxy
+    url: ${LOKI_URL:http://loki:3100}
+    password: ''
+    user: ''
+    database: ''
+    basicAuth: false
+    basicAuthUser: ''
+    basicAuthPassword: ''
+    withCredentials: false
+    isDefault: false
+    jsonData:
+      maxLines: 1000
+    editable: true
+
+  # AlertManager datasource
+  - name: AlertManager
+    type: alertmanager
+    access: proxy
+    url: ${ALERTMANAGER_URL:http://alertmanager:9093}
+    password: ''
+    user: ''
+    database: ''
+    basicAuth: false
+    basicAuthUser: ''
+    basicAuthPassword: ''
+    withCredentials: false
+    isDefault: false
+    jsonData:
+      handling_method: POST
+      implementation: prometheus
+    editable: true

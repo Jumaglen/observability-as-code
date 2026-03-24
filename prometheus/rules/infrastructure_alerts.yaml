@@ -1,0 +1,154 @@
+groups:
+  - name: 'infrastructure_alerts'
+    interval: '30s'
+    rules:
+      # CPU Alerts
+      - alert: HighCPUUsage
+        expr: |
+          (100 - (avg by (instance, market) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 85
+        for: 5m
+        labels:
+          severity: P2
+          component: cpu
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'High CPU usage on {{ $labels.instance }}'
+          description: 'CPU usage on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }}% (threshold: 85%)'
+          details: 'Instance is consuming excessive CPU resources. Check running processes with `top` or `htop`. Consider scaling or optimization.'
+          runbook: 'https://github.com/example-com/observability-as-code/blob/main/docs/alert_runbook.md#highcpuusage'
+
+      - alert: CriticalCPUUsage
+        expr: |
+          (100 - (avg by (instance, market) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 95
+        for: 2m
+        labels:
+          severity: P1
+          component: cpu
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: CPU saturation on {{ $labels.instance }}'
+          description: 'CPU usage on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }}% (threshold: 95%)'
+          details: 'IMMEDIATE ACTION REQUIRED: CPU is critically high. System performance is severely degraded. Check for runaway processes immediately.'
+
+      # Memory Alerts
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: P2
+          component: memory
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'High memory usage on {{ $labels.instance }}'
+          description: 'Memory usage on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }}% (threshold: 80%)'
+          details: 'System memory is nearly exhausted. Check top memory consuming processes. Consider increasing memory or identifying memory leaks.'
+
+      - alert: CriticalMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 2m
+        labels:
+          severity: P1
+          component: memory
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: Memory exhaustion on {{ $labels.instance }}'
+          description: 'Memory usage on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }}% (threshold: 95%)'
+          details: 'IMMEDIATE ACTION REQUIRED: System memory is critically low. OOM killer may be activated. Take emergency action now.'
+
+      # Disk Alerts
+      - alert: HighDiskUsage
+        expr: |
+          (node_filesystem_size_bytes{fstype!="tmpfs",mountpoint="/"} - node_filesystem_avail_bytes{fstype!="tmpfs",mountpoint="/"}) / node_filesystem_size_bytes{fstype!="tmpfs",mountpoint="/"} * 100 > 80
+        for: 5m
+        labels:
+          severity: P2
+          component: disk
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'High disk usage on {{ $labels.instance }}'
+          description: 'Disk usage on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }}% (threshold: 80%)'
+          details: 'Disk space is running low. Check for large logs, temporary files. Consider archiving or cleaning up old data.'
+
+      - alert: CriticalDiskUsage
+        expr: |
+          (node_filesystem_size_bytes{fstype!="tmpfs",mountpoint="/"} - node_filesystem_avail_bytes{fstype!="tmpfs",mountpoint="/"}) / node_filesystem_size_bytes{fstype!="tmpfs",mountpoint="/"} * 100 > 95
+        for: 2m
+        labels:
+          severity: P1
+          component: disk
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: Disk almost full on {{ $labels.instance }}'
+          description: 'Disk usage on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }}% (threshold: 95%)'
+          details: 'IMMEDIATE ACTION REQUIRED: Disk is critically full. This may cause application failures. Free up space immediately.'
+
+      - alert: DiskInodeUsage
+        expr: |
+          (node_filesystem_files_free{fstype!="tmpfs",mountpoint="/"} / node_filesystem_files{fstype!="tmpfs",mountpoint="/"}) < 0.05
+        for: 3m
+        labels:
+          severity: P2
+          component: disk
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Inode exhaustion risk on {{ $labels.instance }}'
+          description: 'Inode usage on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanizePercentage }} free'
+          details: 'Inode space is critical. You can create no more files. Check for many small files, symlink loops, or orphaned process entries.'
+
+      # Network Alerts
+      - alert: HighNetworkErrorRate
+        expr: |
+          rate(node_network_transmit_errs_total[5m]) + rate(node_network_receive_errs_total[5m]) > 100
+        for: 3m
+        labels:
+          severity: P2
+          component: network
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'High network error rate on {{ $labels.instance }}'
+          description: 'Network error rate on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }} errors/sec'
+          details: 'Network interface experiencing high error rate. Check for hardware issues, loose cables, or driver problems.'
+
+      # Host Down Alert
+      - alert: HostDown
+        expr: |
+          up{job="node-exporter"} == 0
+        for: 1m
+        labels:
+          severity: P1
+          component: host
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Host {{ $labels.instance }} is DOWN'
+          description: 'Host {{ $labels.instance }} in market {{ $labels.market }} has been down for more than 1 minute'
+          details: 'CRITICAL: Host is unreachable. Check network connectivity, power status, and system logs. Contact infrastructure team.'
+
+      # Load Average Alert
+      - alert: HighLoadAverage
+        expr: |
+          node_load5 > (on(instance, market) count(count by (cpu) (node_cpu_seconds_total)) * 2)
+        for: 5m
+        labels:
+          severity: P2
+          component: system
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'High load average on {{ $labels.instance }}'
+          description: 'Load average on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }} (CPU cores: {{ $labels.cpu_cores }})'
+          details: 'System load is abnormally high. Multiple processes may be waiting for I/O or CPU time. Investigate resource utilization.'
+
+      # Swap Usage Alert
+      - alert: SwapUsageHigh
+        expr: |
+          (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100 > 70
+        for: 5m
+        labels:
+          severity: P2
+          component: memory
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'High swap usage on {{ $labels.instance }}'
+          description: 'Swap usage on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }}%'
+          details: 'System is using swap memory heavily. This indicates memory pressure and performance degradation. Check memory availability.'

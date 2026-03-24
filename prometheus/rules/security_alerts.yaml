@@ -1,0 +1,236 @@
+groups:
+  - name: 'security_alerts'
+    interval: '30s'
+    rules:
+      # Failed Authentication Attempts
+      - alert: FailedAuthAttempts
+        expr: |
+          rate(auth_failed_attempts_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[5m]) > 5
+        for: 2m
+        labels:
+          severity: P2
+          component: authentication
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'High failed auth rate on {{ $labels.service }} in {{ $labels.market }}'
+          description: 'Excessive failed authentication attempts detected on {{ $labels.service }} in market {{ $labels.market }}: {{ $value | humanize }} attempts/sec'
+          details: 'Previous 5 minutes show {{ $value | humanize }} failed auth attempts per second. This could indicate brute force attack, misconfiguration, or credential issues. Review auth logs immediately.'
+          runbook: 'https://github.com/example-com/observability-as-code/blob/main/docs/alert_runbook.md#failedauthattempts'
+
+      - alert: CriticalFailedAuthAttempts
+        expr: |
+          rate(auth_failed_attempts_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[1m]) > 20
+        for: 1m
+        labels:
+          severity: P1
+          component: authentication
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: Brute force attack suspected on {{ $labels.service }} in {{ $labels.market }}'
+          description: 'CRITICAL failed auth rate on {{ $labels.service }} in market {{ $labels.market }}: {{ $value | humanize }} attempts/sec'
+          details: 'IMMEDIATE ACTION REQUIRED: Potential brute force attack detected. Over 20 failed attempts per minute. Block IP addresses, increase fail2ban sensitivity, activate MFA enforcement. Contact security team.'
+
+      # Firewall Blocks
+      - alert: FirewallBlocksIncreasing
+        expr: |
+          rate(firewall_blocks_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[5m]) > 10
+        for: 3m
+        labels:
+          severity: P2
+          component: firewall
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'High firewall block rate in {{ $labels.market }}'
+          description: 'Firewall is blocking {{ $value | humanize }} connections per second in market {{ $labels.market }} (rule: {{ $labels.rule }})'
+          details: 'Sustained high firewall block rate detected. Could be network scanning, DDoS probe, or legitimate traffic anomaly. Review firewall logs and rule triggers.'
+
+      - alert: CriticalFirewallBlocks
+        expr: |
+          rate(firewall_blocks_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[1m]) > 50
+        for: 1m
+        labels:
+          severity: P1
+          component: firewall
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: Firewall under attack in {{ $labels.market }}'
+          description: 'CRITICAL firewall block rate in market {{ $labels.market }}: {{ $value | humanize }} blocks per second'
+          details: 'IMMEDIATE ACTION REQUIRED: Massive firewall block rate. Likely DDoS attack or network reconnaissance. Activate DDoS mitigation, review firewall rules.'
+
+      # Port Scanning Detection
+      - alert: PortScanDetected
+        expr: |
+          increase(port_scan_attempts_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: P2
+          component: network
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Port scan activity detected in {{ $labels.market }}'
+          description: 'Port scan signatures detected on {{ $labels.target_host }} in market {{ $labels.market }} from source: {{ $labels.source_ip }}'
+          details: 'Network scanning activity detected. Source IP {{ $labels.source_ip }} is probing ports. Verify if legitimate or unauthorized. Consider blocking at firewall.'
+          runbook: 'https://github.com/example-com/observability-as-code/blob/main/docs/alert_runbook.md#portscanning'
+
+      - alert: AggresivePortScan
+        expr: |
+          increase(port_scan_attempts_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[1m]) > 50
+        for: 1m
+        labels:
+          severity: P1
+          component: network
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: Aggressive port scan in {{ $labels.market }}'
+          description: 'Aggressive port scanning detected in market {{ $labels.market }} - {{ $value | humanize }} scan attempts'
+          details: 'CRITICAL PORT SCAN: Aggressive reconnaissance activity. Immediate action: block source IP {{ $labels.source_ip }}, escalate to security team.'
+
+      # Security Anomaly Detection
+      - alert: SecurityAnomaly
+        expr: |
+          increase(security_anomalies_detected_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[5m]) > 0
+        for: 2m
+        labels:
+          severity: P2
+          component: security
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Security anomaly detected in {{ $labels.market }}'
+          description: 'Anomaly type: {{ $labels.type }} detected on {{ $labels.target }} in market {{ $labels.market }}'
+          details: 'ML-based anomaly detection triggered. {{ $labels.type }} anomaly suggests unusual behavior. Review activity logs and compare with baseline patterns.'
+
+      - alert: CriticalSecurityAnomaly
+        expr: |
+          increase(security_anomalies_detected_total{type="privilege_escalation|data_exfiltration|lateral_movement",market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[1m]) > 0
+        for: 1m
+        labels:
+          severity: P1
+          component: security
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: {{ $labels.type | upper }} detected in {{ $labels.market }}'
+          description: 'CRITICAL security incident: {{ $labels.type }} on {{ $labels.target }} in market {{ $labels.market }}'
+          details: 'IMMEDIATE INCIDENT: {{ $labels.type }} activity detected. Activate incident response. Isolate affected systems if needed. Security team must investigate NOW.'
+
+      # Privilege Escalation Attempts
+      - alert: PrivilegeEscalationAttempt
+        expr: |
+          increase(sudo_failed_attempts_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[5m]) > 3
+        for: 1m
+        labels:
+          severity: P2
+          component: access_control
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Privilege escalation attempts on {{ $labels.instance }} in {{ $labels.market }}'
+          description: 'Multiple failed sudo attempts by user {{ $labels.user }} on {{ $labels.instance }} in market {{ $labels.market }}'
+          details: 'Several failed privilege escalation attempts detected. Could be legitimate misconfiguration or privilege escalation attack attempt. Review user activity.'
+
+      # SSH Brute Force
+      - alert: SSHBruteForceAttempt
+        expr: |
+          rate(sshd_failed_auth_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[5m]) > 10
+        for: 2m
+        labels:
+          severity: P2
+          component: ssh
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'SSH brute force attempt on {{ $labels.instance }} in {{ $labels.market }}'
+          description: 'High SSH failed auth rate: {{ $value | humanize }} attempts/sec on {{ $labels.instance }} from {{ $labels.source_ip }}'
+          details: 'SSH brute force attack in progress. Source IP {{ $labels.source_ip }} attempting multiple failed logins. Block IP at firewall or fail2ban.'
+
+      - alert: CriticalSSHBruteForce
+        expr: |
+          rate(sshd_failed_auth_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[1m]) > 50
+        for: 1m
+        labels:
+          severity: P1
+          component: ssh
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: SSH brute force attack in {{ $labels.market }}'
+          description: 'CRITICAL SSH attack rate: {{ $value | humanize }} attempts/sec on {{ $labels.instance }}'
+          details: 'CRITICAL SSH ATTACK: Over 50 failed login attempts per minute. Immediately block source IP {{ $labels.source_ip }}. Escalate to security.'
+
+      # Certificate Expiration
+      - alert: CertificateExpiringWarning
+        expr: |
+          certexpired_seconds_until_expiry < 15 * 24 * 3600 and certexpired_seconds_until_expiry > 7 * 24 * 3600
+        for: 1m
+        labels:
+          severity: P3
+          component: certificates
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Certificate expiring soon: {{ $labels.certificate_name }}'
+          description: 'Certificate {{ $labels.certificate_name }} on {{ $labels.instance }} expires in {{ $value | humanizeDuration }}'
+          details: 'Certificate will expire in 1-2 weeks. Plan renewal immediately to prevent service disruption. Request new certificate from CA.'
+
+      - alert: CertificateExpiring
+        expr: |
+          certexpired_seconds_until_expiry < 7 * 24 * 3600 and certexpired_seconds_until_expiry > 24 * 3600
+        for: 1m
+        labels:
+          severity: P2
+          component: certificates
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Certificate expiring in 1 week: {{ $labels.certificate_name }}'
+          description: 'Certificate {{ $labels.certificate_name }} expires in {{ $value | humanizeDuration }}'
+          details: 'URGENT: Certificate expires within 7 days. Immediate renewal required to prevent service outage. Contact ops/security team.'
+
+      - alert: CertificateExpired
+        expr: |
+          certexpired_seconds_until_expiry < 0
+        for: 0m
+        labels:
+          severity: P1
+          component: certificates
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'CRITICAL: Certificate EXPIRED - {{ $labels.certificate_name }}'
+          description: 'Certificate {{ $labels.certificate_name }} on {{ $labels.instance }} in market {{ $labels.market }} IS EXPIRED'
+          details: 'CRITICAL: Certificate has expired. Services using this certificate will fail. Emergency replacement required NOW.'
+
+      # Suspicious Process Execution
+      - alert: SuspiciousProcessExecution
+        expr: |
+          increase(suspicious_process_exec_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: P2
+          component: process
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Suspicious process execution on {{ $labels.instance }} in {{ $labels.market }}'
+          description: 'Suspicious process detected: {{ $labels.process_name }} run by {{ $labels.user }} on {{ $labels.instance }}'
+          details: 'Process execution policy violation. Process {{ $labels.process_name }} is not in whitelist. Verify if legitimate or unauthorized.'
+
+      # Data Access Anomaly
+      - alert: UnusualDataAccess
+        expr: |
+          increase(data_access_anomaly_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz",severity="high"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: P2
+          component: data_access
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Unusual data access pattern in {{ $labels.market }}'
+          description: 'User {{ $labels.user }} accessed {{ $labels.data_resource }} atypical time/volume on {{ $labels.instance }}'
+          details: 'Unusual data access pattern detected. User may have compromised credentials or unauthorized access. Review user activity and access logs.'
+
+      # Failed Certificate Validation
+      - alert: CertificateValidationFailed
+        expr: |
+          increase(certificate_validation_failures_total{market=~"market-ke|market-tz|market-gh|market-drc|market-ls|market-mz"}[5m]) > 5
+        for: 2m
+        labels:
+          severity: P2
+          component: certificates
+          market: '{{ $labels.market }}'
+        annotations:
+          summary: 'Certificate validation failures on {{ $labels.instance }} in {{ $labels.market }}'
+          description: 'Certificate validation failed {{ $value | humanize }} times in past 5 minutes'
+          details: 'Multiple certificate validation failures. Could indicate MITM attempt, incorrect CA config, or certificate mismatches. Investigate immediately.'
