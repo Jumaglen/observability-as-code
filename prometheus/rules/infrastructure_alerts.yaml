@@ -1,5 +1,5 @@
 groups:
-  - name: 'infrastructure_alerts'
+  - name: 'infrastructure_alarms'
     interval: '30s'
     rules:
       # CPU Alerts
@@ -30,7 +30,7 @@ groups:
           description: 'CPU usage on {{ $labels.instance }} in market {{ $labels.market }} is {{ $value | humanize }}% (threshold: 95%)'
           details: 'IMMEDIATE ACTION REQUIRED: CPU is critically high. System performance is severely degraded. Check for runaway processes immediately.'
 
-      # Memory Alerts
+      # Memory Alerts and alarms
       - alert: HighMemoryUsage
         expr: |
           (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
